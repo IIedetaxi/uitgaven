@@ -1,46 +1,53 @@
-import Link from "next/link";
-import { getCategories, getStock, getTodayData } from "@/lib/data";
-import { cap, dateLong, eur } from "@/lib/format";
-import { Card, ExpenseRow, IconButtonLink } from "@/components/ui";
-import { QuickAdd } from "@/components/quick-add";
-import { Stock } from "@/components/stock";
+"use client";
 
-export default async function TodayPage() {
-  const [d, cats, stock] = await Promise.all([getTodayData(), getCategories(), getStock()]);
-  const quick = cats.filter((c) => c.default_amount_cents != null);
+import Link from "next/link";
+import { useMemo } from "react";
+import { PageTitle, Segmented } from "@/components/ui";
+import { SyncPill } from "@/components/app-shell";
+import { StockCompact } from "@/components/stock";
+import { ExpenseList } from "@/components/expense-list";
+import { useData } from "@/lib/store";
+import { useActions } from "@/lib/use-actions";
+import { usePersisted } from "@/lib/use-persisted";
+import { PERIODS, eur, fmtDayLong, periodData, sortedCategories, type PeriodKind } from "@/lib/stats";
+
+export default function HomePage() {
+  const data = useData();
+  const actions = useActions();
+  const [kind, setKind] = usePersisted<PeriodKind>("uitgaven:home-period", "dag");
+  const p = useMemo(() => periodData(data, kind, 0), [data, kind]);
+  const quick = useMemo(() => sortedCategories(data.categories).filter((c) => c.default_amount_cents != null), [data.categories]);
 
   return (
     <>
-      <header className="flex items-end justify-between pt-6">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-muted text-[13px] font-medium">{cap(dateLong(new Date()))}</span>
-          <h1 className="font-display text-[34px] leading-none font-bold tracking-tight">Vandaag</h1>
-        </div>
-        <IconButtonLink href="/categorieen" label="Categorieën en instellingen">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M4 6h16M4 12h10M4 18h6" />
-            <circle cx="18" cy="16" r="3" />
-          </svg>
-        </IconButtonLink>
-      </header>
+      <PageTitle sub={fmtDayLong(new Date())} right={<SyncPill />}>
+        Uitgaven
+      </PageTitle>
 
-      <section className="bg-yellow text-bg flex flex-col gap-3.5 rounded-3xl p-5">
-        <div className="flex items-center justify-between">
-          <span className="text-[13px] font-semibold tracking-wider uppercase">Uitgegeven vandaag</span>
+      <Segmented label="Periode" options={PERIODS} value={kind} onChange={setKind} />
+
+      <section className="bg-yellow text-bg flex flex-col gap-3.5 rounded-3xl p-5 shadow-[0_12px_32px_rgba(242,194,48,0.12)]">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold tracking-wider uppercase">Uitgegeven {p.title}</span>
           <span className="rounded-full bg-black/10 px-2.5 py-1 text-[13px] font-semibold">
-            {d.today.length} {d.today.length === 1 ? "uitgave" : "uitgaven"}
+            {p.count} {p.count === 1 ? "uitgave" : "uitgaven"}
           </span>
         </div>
-        <div className="font-display text-[52px] leading-none font-bold tracking-tight">{eur(d.todayTotal)}</div>
+        <div className="flex items-end justify-between gap-2">
+          <div key={`${kind}-${p.total}`} className="font-display animate-pop text-[48px] leading-none font-bold tracking-tight">
+            {eur(p.total)}
+          </div>
+          {p.delta && (
+            <span className="mb-1 rounded-full bg-black/10 px-2 py-0.5 text-xs font-bold" title={p.delta.text}>
+              {p.delta.up ? "▲" : "▼"} {p.delta.short}
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-3 gap-2 border-t border-black/15 pt-3">
-          {[
-            ["Deze week", d.week],
-            ["Deze maand", d.month],
-            ["Gem. / dag", d.avgDay],
-          ].map(([k, v]) => (
-            <div key={k as string} className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium">{k}</span>
-              <span className="font-display text-[17px] font-bold">{eur(v as number)}</span>
+          {p.hero.map((s) => (
+            <div key={s.k} className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate text-xs font-medium">{s.k}</span>
+              <span className="font-display truncate text-[16px] font-bold">{s.v}</span>
             </div>
           ))}
         </div>
@@ -48,41 +55,38 @@ export default async function TodayPage() {
 
       {quick.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-muted text-[13px] font-semibold">Snel toevoegen</h2>
+          <h2 className="text-muted px-1 text-[13px] font-semibold">Snel toevoegen</h2>
           <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none]">
             {quick.map((c) => (
-              <QuickAdd key={c.id} id={c.id} name={c.name} color={c.color} amount={eur(c.default_amount_cents!)} />
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => actions.quickAdd(c)}
+                className="border-line bg-surface flex h-11 shrink-0 items-center gap-2 rounded-full border pr-4 pl-3 text-sm font-semibold transition active:scale-95 active:bg-surface-2"
+              >
+                <span className="size-2.5 rounded-full" style={{ background: c.color }} aria-hidden="true" />
+                {c.name}
+                <span className="text-muted font-medium">{eur(c.default_amount_cents!)}</span>
+              </button>
             ))}
+            <Link href="/categorieen" className="text-muted flex h-11 shrink-0 items-center rounded-full border border-dashed border-[#4A443C] px-4 text-sm font-semibold">
+              + Snelknop
+            </Link>
           </div>
         </section>
       )}
 
-      <Stock cartons={stock.open} perDay={stock.perDay} perDayText={stock.perDayText} variant="compact" />
+      <StockCompact />
 
       <section className="flex flex-col gap-2.5">
-        <h2 className="text-muted text-[15px] font-semibold">Vandaag</h2>
-        {d.today.length ? (
-          <Card className="flex flex-col overflow-hidden">
-            {d.today.map((e) => (
-              <ExpenseRow key={e.id} e={e} />
-            ))}
-          </Card>
-        ) : (
-          <div className="border-line text-muted rounded-[20px] border border-dashed p-6 text-center text-sm">
-            Nog niets uitgegeven vandaag.
-          </div>
-        )}
+        <div className="flex items-baseline justify-between px-1">
+          <h2 className="text-[15px] font-semibold">Uitgaven {p.title}</h2>
+          <Link href={`/overzicht?p=${kind}`} className="text-yellow text-[13px] font-semibold">
+            Details ›
+          </Link>
+        </div>
+        <ExpenseList expenses={p.expenses} limit={kind === "dag" ? 50 : 25} empty={`Nog niets uitgegeven ${p.title}. Tik op + om iets toe te voegen.`} />
       </section>
-
-      <Link
-        href="/toevoegen"
-        aria-label="Uitgave toevoegen"
-        className="bg-yellow text-bg fixed right-5 bottom-[calc(max(env(safe-area-inset-bottom),12px)+80px)] z-30 flex size-16 items-center justify-center rounded-full shadow-[0_8px_24px_rgba(0,0,0,0.45)] active:scale-95 transition"
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </Link>
     </>
   );
 }

@@ -1,6 +1,6 @@
 // Eenvoudige service worker: app-shell offline, statische assets cache-first,
 // pagina's network-first met terugval op de laatst geziene versie.
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC = `static-${VERSION}`;
 const PAGES = `pages-${VERSION}`;
 const OFFLINE = "/offline.html";

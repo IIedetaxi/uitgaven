@@ -1,0 +1,20 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+export function usePersisted<T>(key: string, initial: T) {
+  const [v, setV] = useState<T>(initial);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(key);
+      if (s != null) setV(JSON.parse(s));
+    } catch {}
+  }, [key]);
+  const set = (nv: T) => {
+    setV(nv);
+    try {
+      localStorage.setItem(key, JSON.stringify(nv));
+    } catch {}
+  };
+  return [v, set] as const;
+}

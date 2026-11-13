@@ -10,13 +10,19 @@ Simpele PWA om de hele dag door uitgaven bij te houden (totalen en gemiddelden p
 - **Voorraad**: sloffen met gele pakjes. "Pak er 1" maakt het volgende pakje rood. Tik op een pakje om het om te zetten. Je ziet ook het gemiddelde aantal pakjes per dag (over de laatste 14 dagen) en voor hoeveel dagen je voorraad nog genoeg is.
 - **De prijs van een slof wordt automatisch als uitgave geboekt** in de categorie *Sigaretten*. Verwijder je de slof, dan verdwijnt die uitgave mee.
 - **PIN-login**: een ondertekende cookie die 1 jaar geldig blijft.
-- **PWA**: installeerbaar op je beginscherm, met een offline fallback.
+- **Snel en offline**: alle data staat lokaal op je telefoon. Elke actie is meteen zichtbaar en wordt op de achtergrond opgeslagen. Ben je offline, dan gaan je wijzigingen in een wachtrij en worden ze verstuurd zodra je weer verbinding hebt.
+- **Meldingen**: na elke actie een melding, met "Ongedaan maken" bij toevoegen, verwijderen en pakjes pakken.
+- **PWA**: installeerbaar op je beginscherm.
 
 ## Stack
 
 Next.js 16 (App Router, Server Actions) · Tailwind CSS 4 · Neon Postgres (HTTP-driver) · draait op het gratis **Vercel Hobby**-plan met de gratis **Neon**-database.
 
-De tabellen worden bij de eerste request automatisch aangemaakt. Er is geen migratiestap nodig.
+De tabellen worden bij de eerste request automatisch aangemaakt (en oude versies gemigreerd). Er is geen migratiestap nodig.
+
+De server draait in Frankfurt (`fra1`, ingesteld in `vercel.json`), naast een Neon-database in `eu-central-1`. Kies je een andere Neon-regio, pas dan ook de Vercel-regio aan.
+
+**Architectuur:** de pagina's zijn statisch en client-side. `GET /api/data` laadt alles, en `POST /api/sync` verwerkt een wachtrij met acties. De id's worden door de client gemaakt, zodat optimistische updates en offline werken zonder conflicten.
 
 ## Deployen op Vercel (gratis)
 

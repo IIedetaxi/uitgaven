@@ -9,7 +9,7 @@ if (process.env.NEON_FETCH_ENDPOINT) {
 
 let _sql: NeonQueryFunction<false, false> | null = null;
 
-function getSql() {
+export function getSql() {
   if (!_sql) {
     const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
     if (!url) throw new Error("DATABASE_URL ontbreekt. Koppel Neon in Vercel of zet hem in .env.local");
@@ -18,20 +18,19 @@ function getSql() {
   return _sql;
 }
 
-/** Tagged template: await sql`select ...` */
-export const sql = ((strings: TemplateStringsArray, ...values: unknown[]) =>
-  getSql()(strings, ...values)) as unknown as NeonQueryFunction<false, false>;
-
 let ready: Promise<void> | null = null;
 
-/** Maakt tabellen aan (idempotent) en zaait standaardcategorieën. Eén keer per cold start. */
+/**
+ * Maakt tabellen aan (idempotent), migreert oude int-ids naar bigint (de client maakt ids aan)
+ * en zaait standaardcategorieën. Eén keer per cold start.
+ */
 export function ensureSchema(): Promise<void> {
   if (!ready) {
     ready = (async () => {
       const q = getSql();
       await q.transaction([
         q`CREATE TABLE IF NOT EXISTS categories (
-            id SERIAL PRIMARY KEY,
+            id BIGSERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             color TEXT NOT NULL DEFAULT '#F2C230',
             default_amount_cents INTEGER,
@@ -40,7 +39,7 @@ export function ensureSchema(): Promise<void> {
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
           )`,
         q`CREATE TABLE IF NOT EXISTS cartons (
-            id SERIAL PRIMARY KEY,
+            id BIGSERIAL PRIMARY KEY,
             label TEXT,
             packs_total INTEGER NOT NULL,
             price_cents INTEGER NOT NULL DEFAULT 0,
@@ -48,20 +47,34 @@ export function ensureSchema(): Promise<void> {
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
           )`,
         q`CREATE TABLE IF NOT EXISTS packs (
-            id SERIAL PRIMARY KEY,
-            carton_id INTEGER NOT NULL REFERENCES cartons(id) ON DELETE CASCADE,
+            id BIGSERIAL PRIMARY KEY,
+            carton_id BIGINT NOT NULL REFERENCES cartons(id) ON DELETE CASCADE,
             position INTEGER NOT NULL,
             used_at TIMESTAMPTZ
           )`,
         q`CREATE TABLE IF NOT EXISTS expenses (
-            id SERIAL PRIMARY KEY,
+            id BIGSERIAL PRIMARY KEY,
             amount_cents INTEGER NOT NULL,
-            category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+            category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL,
             note TEXT,
             spent_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            carton_id INTEGER REFERENCES cartons(id) ON DELETE CASCADE,
+            carton_id BIGINT REFERENCES cartons(id) ON DELETE CASCADE,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
           )`,
+        // Migratie v1 → v2: int-kolommen naar bigint (alleen als dat nog nodig is).
+        q`DO $$
+          DECLARE r record;
+          BEGIN
+            FOR r IN
+              SELECT table_name, column_name FROM information_schema.columns
+              WHERE table_schema = current_schema() AND data_type = 'integer'
+                AND (table_name, column_name) IN (
+                  ('categories','id'),('cartons','id'),('packs','id'),('packs','carton_id'),
+                  ('expenses','id'),('expenses','category_id'),('expenses','carton_id'))
+            LOOP
+              EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE BIGINT', r.table_name, r.column_name);
+            END LOOP;
+          END $$`,
         q`CREATE INDEX IF NOT EXISTS expenses_spent_at_idx ON expenses (spent_at)`,
         q`CREATE INDEX IF NOT EXISTS packs_carton_idx ON packs (carton_id, position)`,
         q`INSERT INTO categories (name, color, default_amount_cents, system_key, sort)
